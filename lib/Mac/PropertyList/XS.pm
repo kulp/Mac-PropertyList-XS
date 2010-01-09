@@ -1,4 +1,27 @@
+=head1 NAME
+
+Mac::PropertyList::XS - work with Mac plists at a low level, really fast
+
+=cut
+
 package Mac::PropertyList::XS;
+
+=head1 SYNOPSIS
+
+See L<Mac::PropertyList> and L<Mac::PropertyList::SAX>
+
+=head1 DESCRIPTION
+
+L<Mac::PropertyList::SAX> was my first attempt to speed up property-list
+parsing. It achieves about a 30x speed boost, but large files still take
+too long for my taste. This module addresses some remaining speed gains
+by implementing some expensive operations in C.
+
+This module is intended to be a drop-in replacement for
+L<Mac::PropertyList::SAX>, which is itself a drop-in replacement for
+L<Mac::PropertyList>.
+
+=cut
 
 use 5.010000;
 use strict;
@@ -8,23 +31,27 @@ use Carp;
 require Exporter;
 use AutoLoader;
 
-our @ISA = qw(Exporter);
+# Passthrough function
+use Mac::PropertyList qw(plist_as_string);
+use XML::Parser;
 
-# Items to export into callers namespace by default. Note: do not export
-# names by default without a very good reason. Use EXPORT_OK instead.
-# Do not simply export all your public functions/methods/constants.
+use base qw(Exporter);
 
-# This allows declaration	use Mac::PropertyList::XS ':all';
-# If you do not need this, moving things directly into @EXPORT or @EXPORT_OK
-# will save memory.
-our %EXPORT_TAGS = ( 'all' => [ qw(
-	
-) ] );
+our @EXPORT_OK = qw(
+    parse_plist 
+    parse_plist_fh
+    parse_plist_file
+    parse_plist_string
+    plist_as_string
+    create_from_ref
+    create_from_hash
+    create_from_array
+);
 
-our @EXPORT_OK = ( @{ $EXPORT_TAGS{'all'} } );
-
-our @EXPORT = qw(
-	
+our %EXPORT_TAGS = (
+    all    => \@EXPORT_OK,
+    create => [ qw(create_from_ref create_from_hash create_from_array plist_as_string) ],
+    parse  => [ qw(parse_plist parse_plist_fh parse_plist_file parse_plist_string) ],
 );
 
 our $VERSION = '0.00_01';
@@ -42,14 +69,14 @@ sub AUTOLOAD {
     my ($error, $val) = constant($constname);
     if ($error) { croak $error; }
     {
-	no strict 'refs';
-	# Fixed between 5.005_53 and 5.005_61
-#XXX	if ($] >= 5.00561) {
-#XXX	    *$AUTOLOAD = sub () { $val };
-#XXX	}
-#XXX	else {
-	    *$AUTOLOAD = sub { $val };
-#XXX	}
+        no strict 'refs';
+        # Fixed between 5.005_53 and 5.005_61
+#XXX    if ($] >= 5.00561) {
+#XXX        *$AUTOLOAD = sub () { $val };
+#XXX    }
+#XXX    else {
+            *$AUTOLOAD = sub { $val };
+#XXX    }
     }
     goto &$AUTOLOAD;
 }
@@ -57,59 +84,130 @@ sub AUTOLOAD {
 require XSLoader;
 XSLoader::load('Mac::PropertyList::XS', $XS_VERSION);
 
-# Preloaded methods go here.
+=head1 EXPORTS
 
-# Autoload methods go after =cut, and are processed by the autosplit program.
+By default, no functions are exported. Specify individual functions to export
+as usual, or use the tags ':all', ':create', and ':parse' for the appropriate
+sets of functions (':create' includes the create* functions as well as
+plist_as_string; ':parse' includes the parse* functions).
 
-1;
-__END__
-# Below is stub documentation for your module. You'd better edit it!
+=head1 FUNCTIONS
 
-=head1 NAME
+=over 4
 
-Mac::PropertyList::XS - Perl extension for blah blah blah
+=item parse_plist_file
 
-=head1 SYNOPSIS
+See L<Mac::PropertyList/parse_plist_file>
 
-  use Mac::PropertyList::XS;
-  blah blah blah
+=cut
 
-=head1 DESCRIPTION
+sub parse_plist_file
+{
+    my $file = shift;
 
-Stub documentation for Mac::PropertyList::XS, created by h2xs. It looks like the
-author of the extension was negligent enough to leave the stub
-unedited.
+    if (ref $file) {
+        _parse("parse", $file);
+    } else {
+        carp("parse_plist_file: file [$file] does not exist!"), return unless -e $file;
+        open my $fh, "<", $file;
+        _parse("parse", $fh);
+    }
+}
 
-Blah blah blah.
+# In XS
+sub handle_start;
+sub handle_end;
+sub handle_char;
 
-=head2 EXPORT
+sub _parse
+{
+    my ($how, $what) = @_;
+    my $p = new XML::Parser(Handlers => { Start => \&handle_start,
+                                          End   => \&handle_end,
+                                          Char  => \&handle_char });
+    $p->$how($what);
+}
 
-None by default.
+=item parse_plist_fh
 
+See L<Mac::PropertyList/parse_plist_fh>
 
+=cut
 
-=head1 SEE ALSO
+sub parse_plist_fh { _parse("parsefile", @_) }
 
-Mention other useful documentation such as the documentation of
-related modules or operating system documentation (such as man pages
-in UNIX), or any relevant external documentation such as RFCs or
-standards.
+=item parse_plist
 
-If you have a mailing list set up for your module, mention it here.
+See L<Mac::PropertyList/parse_plist>
 
-If you have a web site set up for your module, mention it here.
+=cut
+
+sub parse_plist { _parse("parse", @_) }
+
+=item parse_plist_string
+
+An alias to parse_plist, provided for better regularity compared to Perl SAX.
+
+=cut
+
+*parse_plist_string = \&parse_plist;
+
+=item create_from_ref( HASH_REF | ARRAY_REF )
+
+Create a plist from an array or hash reference.
+
+The values of the hash can be simple scalars or references. Hash and array
+references are handled recursively, and L<Mac::PropertyList> objects are output
+correctly.  All other scalars are treated as strings (use L<Mac::PropertyList>
+objects to represent other types of scalars).
+
+Returns a string representing the reference in serialized plist format.
+
+=item create_from_hash( HASH_REF )
+
+Provided for backward compatibility with L<Mac::PropertyList>: aliases
+create_from_ref.
+
+=item create_from_array( ARRAY_REF )
+
+Provided for backward compatibility with L<Mac::PropertyList>: aliases
+create_from_ref.
+
+=back
+
+=head1 BUGS / CAVEATS
+
+Certainly !
+
+=head1 SUPPORT
+
+Please contact the author with bug reports or feature requests.
 
 =head1 AUTHOR
 
-Darren Kulp, E<lt>kulp@E<gt>
+Darren M. Kulp, C<< <kulp @ cpan.org> >>
+
+=head1 THANKS
+
+brian d foy, who created the L<Mac::PropertyList> module whose tests were
+appropriated for this module.
+
+=head1 SEE ALSO
+
+L<Mac::PropertyList>, the inspiration for this module.
 
 =head1 COPYRIGHT AND LICENSE
 
-Copyright (C) 2010 by Darren Kulp
+Copyright (C) 2009 by Darren Kulp
 
 This library is free software; you can redistribute it and/or modify
-it under the same terms as Perl itself, either Perl version 5.10.0 or,
+it under the same terms as Perl itself, either Perl version 5.8.4 or,
 at your option, any later version of Perl 5 you may have available.
 
-
 =cut
+
+1;
+__END__
+
+# vi: set et ts=4 sw=4: #
+
