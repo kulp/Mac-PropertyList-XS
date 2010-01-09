@@ -45,7 +45,7 @@ static struct state *st = &_st;
 #define countof(X) (sizeof (X) / sizeof (X)[0])
 
 /// TODO use our own ::XS namespace
-#define PACKAGE_PREFIX "Mac::PropertyList::"
+#define PACKAGE_PREFIX "Mac::PropertyList::SAX::"
 // long enough to cover any type name
 #define TYPE_FILLER    "XXXXXX"
 
@@ -149,18 +149,6 @@ handle_start(SV *expat, SV *element, ...)
                 SvREFCNT_inc(st->base.val);
                 st->base.context = context_for_name(name);
                 SvREFCNT_dec(st->base.key);
-
-                /*
-                switch (st->base.context) {
-                    case S_DICT:
-                        st->base.val;
-                        break;
-                    case S_ARRAY:
-                        break;
-                    default:
-                        croak("Illegal context id %d", st->base.context);
-                }
-                */
             } else if (is_SIMPLE_type(name)) {
                 st->base.context = S_TEXT;
             } else if (strcmp(name, "key") == 0) {
@@ -211,6 +199,9 @@ handle_end(SV *expat, SV *element)
 
                 val = POPs;
                 SvREFCNT_inc(val);
+                SvREFCNT_dec(st->accum);
+
+                st->accum = NULL;
             } else if (strcmp(name, "key") == 0) {
                 st->base.key = st->accum;
                 st->accum = NULL;
