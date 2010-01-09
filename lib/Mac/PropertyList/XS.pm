@@ -125,8 +125,9 @@ sub _parse
     my ($how, $what) = @_;
     my $p = new XML::Parser(Handlers => { Start => \&handle_start,
                                           End   => \&handle_end,
-                                          Char  => \&handle_char });
-    $p->$how($what);
+                                          Char  => \&handle_char,
+                                          Final => \&handle_final });
+    return $p->$how($what);
 }
 
 =item parse_plist_fh

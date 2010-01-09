@@ -149,6 +149,18 @@ handle_start(SV *expat, SV *element, ...)
                 SvREFCNT_inc(st->base.val);
                 st->base.context = context_for_name(name);
                 SvREFCNT_dec(st->base.key);
+
+                /*
+                switch (st->base.context) {
+                    case S_DICT:
+                        st->base.val;
+                        break;
+                    case S_ARRAY:
+                        break;
+                    default:
+                        croak("Illegal context id %d", st->base.context);
+                }
+                */
             } else if (is_SIMPLE_type(name)) {
                 st->base.context = S_TEXT;
             } else if (strcmp(name, "key") == 0) {
@@ -210,10 +222,10 @@ handle_end(SV *expat, SV *element)
                 char *k;
                 case S_DICT:
                     k = SvPV(st->base.key, len);
-                    hv_store((HV*)st->base.val, k, len, val, 0);
+                    hv_store((HV*)SvRV(st->base.val), k, len, val, 0);
                     break;
                 case S_ARRAY:
-                    av_push((AV*)st->base.val, val);
+                    av_push((AV*)SvRV(st->base.val), val);
                     break;
                 case S_TOP:
                     st->base.val = val;
@@ -231,5 +243,12 @@ handle_char(SV *expat, SV *string)
                 st->accum = newSV(0);
             sv_catsv(st->accum, string);
         }
+
+SV *
+handle_final(SV *expat)
+    CODE:
+        RETVAL = st->base.val;
+    OUTPUT:
+        RETVAL
 
 INCLUDE: const-xs.inc
