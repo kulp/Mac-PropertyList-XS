@@ -10,6 +10,18 @@
 
 enum ctx { S_EMPTY, S_TOP, S_FREE, S_DICT, S_ARRAY, S_KEY, S_TEXT };
 
+static const char *context_names[] = {
+#define _R(X) [S_##X] = #X
+    _R(EMPTY),
+    _R(TOP),
+    _R(FREE),
+    _R(DICT),
+    _R(ARRAY),
+    _R(KEY),
+    _R(TEXT),
+#undef _R
+};
+
 struct state {
     SV *accum;
     // TODO keep everything in the stack to reduce copying
@@ -32,7 +44,10 @@ static struct state *st = &_st;
 
 #define countof(X) (sizeof (X) / sizeof (X)[0])
 
+/// TODO use our own ::XS namespace
 #define PACKAGE_PREFIX "Mac::PropertyList::"
+// long enough to cover any type name
+#define TYPE_FILLER    "XXXXXX"
 
 #define COMPLEX_TYPES \
     _R(dict) \
@@ -79,8 +94,14 @@ static enum ctx context_for_name(const char *name)
     // TODO use gperf or some fast hash function to look up context
     const char **which = lfind(name, ALL_types, &count, sizeof ALL_types[0], _str_cmp);
     if (which == NULL)
-        return -1;
-    return which - ALL_types;
+        croak("Could not find context '%s'", name);
+
+    static enum ctx lookup[] = {
+        [T_dict ] = S_DICT,
+        [T_array] = S_ARRAY,
+    };
+
+    return lookup[which - ALL_types];
 }
 
 #define _R(X) \
@@ -109,23 +130,14 @@ handle_start(SV *expat, SV *element, ...)
             st->base.context = S_TOP;
         } else if (st->base.context == S_TOP || strcmp(name, "key") == 0 || is_ALL_type(name)) {
             struct stack *old = st->stack;
-            //st->stack = malloc(sizeof *st->stack);
             Newxz(st->stack, 1, struct stack);
             st->stack->node = st->base;
             st->stack->next = old;
 
             if (is_COMPLEX_type(name)) {
-                // TODO figure out the most efficient way to compute this name
-                /// TODO use our own ::XS namespace
-                char temp[] = PACKAGE_PREFIX "XXXXXX";
+                char temp[] = PACKAGE_PREFIX TYPE_FILLER;
                 strcpy(&temp[sizeof PACKAGE_PREFIX - 1], name);
-                /*
-                SV *cname = newSVpvn(temp, sizeof temp + sizeof "XXXXX" + sizeof "->new");
-                sv_catsv(cname, element);
-                sv_catpv(cname, "->new");
-                */
 
-                // TODO do this without eval()
                 PUSHMARK(SP);
                 XPUSHs(sv_2mortal(newSVpv(temp, 0)));
                 PUTBACK;
@@ -133,26 +145,24 @@ handle_start(SV *expat, SV *element, ...)
                 SPAGAIN;
                 if (count != 1) croak("Failed new() call");
 
-                //st->base.val = eval_pv(SvPV_nolen(cname), 0);
                 st->base.val = POPs;
                 SvREFCNT_inc(st->base.val);
                 st->base.context = context_for_name(name);
                 SvREFCNT_dec(st->base.key);
             } else if (is_SIMPLE_type(name)) {
                 st->base.context = S_TEXT;
-            } else if (strcmp(name, "key")) {
+            } else if (strcmp(name, "key") == 0) {
                 if (st->base.context == S_DICT) {
                     st->base.context = S_KEY;
                 } else {
-                    croak("<key/> in improper context %s'", ALL_types[st->base.context]);
+                    croak("<key/> in improper context '%s'", context_names[st->base.context]);
                 }
             } else {
                 croak("Top-level element '%s' in plist is not recognized", name);
-           }
+            }
         } else {
             croak("Received invalid start element '%s'", name);
         }
-
 
 void
 handle_end(SV *expat, SV *element)
@@ -166,13 +176,15 @@ handle_end(SV *expat, SV *element)
             st->base = *elt;
 
             if (is_SIMPLE_type(name)) {
-                char pv[] = PACKAGE_PREFIX "XXXXXX";
+                char pv[] = PACKAGE_PREFIX TYPE_FILLER;
                 strcpy(&pv[sizeof PACKAGE_PREFIX - 1], name);
 
                 PUSHMARK(SP);
+                XPUSHs(sv_2mortal(newSVpv(pv, 0)));
                 if (st->accum) {
                     if (strcmp(name, "data") == 0) {
-                        ; // TODO mime64
+                        croak("'data' type still unsupported");
+                        // TODO mime64
                     } else {
                         XPUSHs(st->accum);
                     }
@@ -180,7 +192,6 @@ handle_end(SV *expat, SV *element)
                     XPUSHs(sv_2mortal(newSVpv("", 0)));
                 }
 
-                XPUSHs(sv_2mortal(newSVpv(pv, 0)));
                 PUTBACK;
                 int count = call_method("new", G_SCALAR);
                 SPAGAIN;
@@ -208,14 +219,17 @@ handle_end(SV *expat, SV *element)
                     st->base.val = val;
                     break;
                 default:
-                    croak("Bad context '%s'", ALL_types[st->base.context]);
+                    croak("Bad context '%s'", context_names[st->base.context]);
             }
         }
 
 void
 handle_char(SV *expat, SV *string)
     CODE:
-        if (st->base.context == S_TEXT || st->base.context == S_KEY)
+        if (st->base.context == S_TEXT || st->base.context == S_KEY) {
+            if (!st->accum)
+                st->accum = newSV(0);
             sv_catsv(st->accum, string);
+        }
 
 INCLUDE: const-xs.inc

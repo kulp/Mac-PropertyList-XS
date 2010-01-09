@@ -33,6 +33,7 @@ use AutoLoader;
 
 # Passthrough function
 use Mac::PropertyList qw(plist_as_string);
+use Mac::PropertyList::SAX qw(create_from_ref create_from_hash create_from_array);
 use XML::Parser;
 
 use base qw(Exporter);
