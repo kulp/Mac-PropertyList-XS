@@ -6,6 +6,7 @@ use warnings;
 use Test::More 'no_plan';
 
 my $Class = 'Mac::PropertyList::XS';
+my $suborned = 'Mac::PropertyList::SAX';
 use_ok( $Class );
 
 $Class->import( 'parse_plist_file' );
@@ -24,7 +25,7 @@ ok(
 my $plist = parse_plist_file( $fh );
 
 ok( $plist, "return value is not false" );
-isa_ok( $plist, "${Class}::dict" );
+isa_ok( $plist, "${suborned}::dict" );
 is( $plist->type, 'dict', 'type key has right value for nested dict' );
 test_plist( $plist );
 }
@@ -40,7 +41,7 @@ ok(
 my $plist = parse_plist_file( \*FILE );
 
 ok( $plist, "return value is not false" );
-isa_ok( $plist,"${Class}::dict" );
+isa_ok( $plist,"${suborned}::dict" );
 is( $plist->type, 'dict', 'type key has right value for nested dict' );
 test_plist( $plist );
 }
@@ -54,7 +55,7 @@ test_plist( $plist );
 my $plist = parse_plist_file( $File );
 
 ok( $plist, "return value is not false" );
-isa_ok( $plist,"${Class}::dict" );
+isa_ok( $plist,"${suborned}::dict" );
 is( $plist->type, 'dict', 'type key has right value for nested dict' );
 test_plist( $plist );
 }

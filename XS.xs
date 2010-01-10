@@ -23,6 +23,7 @@ static const char *context_names[] = {
 };
 
 struct state {
+    SV *parser;
     SV *accum;
     // TODO keep everything in the stack to reduce copying
     struct node {
@@ -37,17 +38,17 @@ struct state {
 };
 
 // TODO support multiple states using a tree indexed by pointer
-static struct state _st = {
-    .base.context = S_EMPTY,
-};
-static struct state *st = &_st;
+//static struct state _st = { .base.context = S_EMPTY };
+//static struct state *st = &_st;
+
+void *statetree;
 
 #define countof(X) (sizeof (X) / sizeof (X)[0])
 
 /// TODO use our own ::XS namespace
 #define PACKAGE_PREFIX "Mac::PropertyList::SAX::"
 // long enough to cover any type name
-#define TYPE_FILLER    "XXXXXX"
+#define TYPE_FILLER    "XXXXXXXX"
 
 #define COMPLEX_TYPES \
     _R(dict) \
@@ -83,6 +84,27 @@ static const char *NUMERICAL_types[] = { NUMERICAL_TYPES };
 static const char *  COMPLEX_types[] = { COMPLEX_TYPES   };
 #undef _R
 
+static int _find_parser(const void *a, const void *b)
+{
+    const struct state *x = a;
+    const struct state *y = b;
+
+    assert(x->parser != NULL);
+    assert(y->parser != NULL);
+
+    return PTR2IV(SvRV(x->parser)) -
+           PTR2IV(SvRV(y->parser));
+}
+
+static struct state* state_for_parser(SV *parser)
+{
+    struct state st = { .parser = parser };
+    struct state *result = tfind(&st, &statetree, _find_parser);
+    if (result == NULL)
+        croak("Failed to look up state object by parser argument");
+    return result;
+}
+
 static int _str_cmp(const void *a, const void *b)
 {
     return *(char**)b ? strcmp(a, *(char **)b) : -1;
@@ -93,10 +115,10 @@ static enum ctx context_for_name(const char *name)
     size_t count = countof(ALL_types);
     // TODO use gperf or some fast hash function to look up context
     const char **which = lfind(name, ALL_types, &count, sizeof ALL_types[0], _str_cmp);
-    if (which == NULL)
+    if (which == NULL || which < ALL_types || which - ALL_types >= countof(ALL_types))
         croak("Could not find context '%s'", name);
 
-    static enum ctx lookup[] = {
+    static const enum ctx lookup[] = {
         [T_dict ] = S_DICT,
         [T_array] = S_ARRAY,
     };
@@ -125,6 +147,7 @@ PROTOTYPES: ENABLE
 void
 handle_start(SV *expat, SV *element, ...)
     CODE:
+        struct state *st = state_for_parser(expat);
         const char *name = SvPVX(element);
         if (st->base.context == S_EMPTY && strcmp(name, "plist") == 0) {
             st->base.context = S_TOP;
@@ -148,7 +171,8 @@ handle_start(SV *expat, SV *element, ...)
                 st->base.val = POPs;
                 SvREFCNT_inc(st->base.val);
                 st->base.context = context_for_name(name);
-                SvREFCNT_dec(st->base.key);
+                //SvREFCNT_dec(st->base.key);
+                st->base.key = NULL;
             } else if (is_SIMPLE_type(name)) {
                 st->base.context = S_TEXT;
             } else if (strcmp(name, "key") == 0) {
@@ -167,6 +191,7 @@ handle_start(SV *expat, SV *element, ...)
 void
 handle_end(SV *expat, SV *element)
     CODE:
+        struct state *st = state_for_parser(expat);
         const char *name = SvPVX(element);
         if (strcmp(name, "plist")) { // discard plist element
             struct node *elt = &st->stack->node;
@@ -199,7 +224,7 @@ handle_end(SV *expat, SV *element)
 
                 val = POPs;
                 SvREFCNT_inc(val);
-                SvREFCNT_dec(st->accum);
+                //SvREFCNT_dec(st->accum);
 
                 st->accum = NULL;
             } else if (strcmp(name, "key") == 0) {
@@ -229,17 +254,32 @@ handle_end(SV *expat, SV *element)
 void
 handle_char(SV *expat, SV *string)
     CODE:
+        struct state *st = state_for_parser(expat);
         if (st->base.context == S_TEXT || st->base.context == S_KEY) {
             if (!st->accum)
                 st->accum = newSV(0);
             sv_catsv(st->accum, string);
         }
 
+void
+handle_init(SV *expat)
+    CODE:
+        struct state *st;
+        Newxz(st, 1, struct state);
+        st->parser = expat;
+        // this is fragile : what if the expat object moves ?
+        tsearch(st, &statetree, _find_parser);
+
 SV *
 handle_final(SV *expat)
     CODE:
+        struct state *st = state_for_parser(expat);
+        tdelete(st, &statetree, _find_parser);
         RETVAL = st->base.val;
+        // TODO need to free more stuff inside
+        Safefree(st);
     OUTPUT:
         RETVAL
 
 INCLUDE: const-xs.inc
+

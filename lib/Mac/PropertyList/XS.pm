@@ -115,15 +115,11 @@ sub parse_plist_file
     }
 }
 
-# In XS
-sub handle_start;
-sub handle_end;
-sub handle_char;
-
 sub _parse
 {
     my ($how, $what) = @_;
-    my $p = new XML::Parser(Handlers => { Start => \&handle_start,
+    my $p = new XML::Parser(Handlers => { Init  => \&handle_init,
+                                          Start => \&handle_start,
                                           End   => \&handle_end,
                                           Char  => \&handle_char,
                                           Final => \&handle_final });
