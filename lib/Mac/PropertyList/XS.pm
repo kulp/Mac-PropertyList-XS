@@ -107,11 +107,11 @@ sub parse_plist_file
     my $file = shift;
 
     if (ref $file) {
-        _parse("parse", $file);
+        _parse(parse => $file);
     } else {
         carp("parse_plist_file: file [$file] does not exist!"), return unless -e $file;
         open my $fh, "<", $file;
-        _parse("parse", $fh);
+        _parse(parse => $fh);
     }
 }
 
@@ -132,7 +132,7 @@ See L<Mac::PropertyList/parse_plist_fh>
 
 =cut
 
-sub parse_plist_fh { _parse("parsefile", @_) }
+sub parse_plist_fh { _parse(parse => @_) }
 
 =item parse_plist
 
@@ -140,7 +140,7 @@ See L<Mac::PropertyList/parse_plist>
 
 =cut
 
-sub parse_plist { _parse("parse", @_) }
+sub parse_plist { _parse(parse => @_) }
 
 =item parse_plist_string
 

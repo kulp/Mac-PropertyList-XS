@@ -1,3 +1,4 @@
+#include <assert.h>
 #include <search.h>
 
 #include "EXTERN.h"
@@ -86,6 +87,9 @@ static const char *  COMPLEX_types[] = { COMPLEX_TYPES   };
 
 static int _find_parser(const void *a, const void *b)
 {
+    assert(a != NULL);
+    assert(b != NULL);
+
     const struct state *x = a;
     const struct state *y = b;
 
@@ -99,10 +103,10 @@ static int _find_parser(const void *a, const void *b)
 static struct state* state_for_parser(SV *parser)
 {
     struct state st = { .parser = parser };
-    struct state *result = tfind(&st, &statetree, _find_parser);
-    if (result == NULL)
+    struct state **result = tfind(&st, &statetree, _find_parser);
+    if (*result == NULL)
         croak("Failed to look up state object by parser argument");
-    return result;
+    return *result;
 }
 
 static int _str_cmp(const void *a, const void *b)
