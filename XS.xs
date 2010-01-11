@@ -9,6 +9,10 @@
 
 #include "const-c.inc"
 
+// for base64 decoding
+static unsigned char alphabet[64] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+static char decoder[256];
+
 enum ctx { S_EMPTY, S_TOP, S_FREE, S_DICT, S_ARRAY, S_KEY, S_TEXT };
 
 static const char *context_names[] = {
@@ -212,10 +216,33 @@ handle_end(SV *expat, SV *element)
                 XPUSHs(sv_2mortal(newSVpv(pv, 0)));
                 if (st->accum) {
                     if (strcmp(name, "data") == 0) {
-                        croak("'data' type still unsupported");
-                        // TODO mime64
+                        // base64 decode
+                        // from http://ftp.riken.jp/net/mail/vm/base64-decode.c
+                        int i, j = 0, char_count = 0, bits = 0, total = 0;
+                        size_t len;
+                        const char *what = SvPV(st->accum, len);
+                        char out[len];
+                        for (i = 0; what[i] != 0; i++) {
+                            unsigned char c = what[i];
+                            if (c == '=') break;
+                            // maybe handle bogus data better ?
+                            bits += decoder[c];
+                            char_count++;
+                            if (char_count == 4) {
+                                out[j++] = bits >> 16;
+                                out[j++] = (bits >> 8) & 0xff;
+                                out[j++] = bits & 0xff;
+                                bits = 0;
+                                char_count = 0;
+                                total++;
+                            } else {
+                                bits <<= 6;
+                            }
+                        }
+
+                        XPUSHs(sv_2mortal(newSVpvn(out, total)));
                     } else {
-                        XPUSHs(st->accum);
+                        XPUSHs(sv_2mortal(st->accum));
                     }
                 } else {
                     XPUSHs(sv_2mortal(newSVpv("", 0)));
@@ -228,7 +255,6 @@ handle_end(SV *expat, SV *element)
 
                 val = POPs;
                 SvREFCNT_inc(val);
-                //SvREFCNT_dec(st->accum);
 
                 st->accum = NULL;
             } else if (strcmp(name, "key") == 0) {
@@ -273,6 +299,14 @@ handle_init(SV *expat)
         st->parser = expat;
         // this is fragile : what if the expat object moves ?
         tsearch(st, &statetree, _find_parser);
+
+        // TODO statically init or once-init
+        if (!decoder[0]) {
+            int i;
+            for (i = (sizeof alphabet) - 1; i >= 0 ; i--)
+                decoder[alphabet[i]] = i;
+        }
+
 
 SV *
 handle_final(SV *expat)
