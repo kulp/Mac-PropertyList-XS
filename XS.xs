@@ -203,6 +203,7 @@ handle_end(SV *expat, SV *element)
         const char *name = SvPVX(element);
         if (strcmp(name, "plist")) { // discard plist element
             struct node *elt = &st->stack->node;
+            struct stack *temp = st->stack;
             st->stack = st->stack->next;
 
             SV *val = st->base.val;
@@ -256,19 +257,19 @@ handle_end(SV *expat, SV *element)
                 val = POPs;
                 SvREFCNT_inc(val);
 
+                //SvREFCNT_dec(st->accum);
                 st->accum = NULL;
             } else if (strcmp(name, "key") == 0) {
+                SvREFCNT_dec(st->base.key);
                 st->base.key = st->accum;
                 st->accum = NULL;
+                Safefree(temp);
                 return;
             }
 
             switch (st->base.context) {
-                STRLEN len;
-                char *k;
                 case S_DICT:
-                    k = SvPV(st->base.key, len);
-                    hv_store((HV*)SvRV(st->base.val), k, len, val, 0);
+                    hv_store_ent((HV*)SvRV(st->base.val), st->base.key, val, 0);
                     break;
                 case S_ARRAY:
                     av_push((AV*)SvRV(st->base.val), val);
@@ -279,6 +280,8 @@ handle_end(SV *expat, SV *element)
                 default:
                     croak("Bad context '%s'", context_names[st->base.context]);
             }
+
+            Safefree(temp);
         }
 
 void
@@ -287,7 +290,7 @@ handle_char(SV *expat, SV *string)
         struct state *st = state_for_parser(expat);
         if (st->base.context == S_TEXT || st->base.context == S_KEY) {
             if (!st->accum)
-                st->accum = newSV(0);
+                st->accum = newSVpvn("", 0);
             sv_catsv(st->accum, string);
         }
 
@@ -300,7 +303,6 @@ handle_init(SV *expat)
         // this is fragile : what if the expat object moves ?
         tsearch(st, &statetree, _find_parser);
 
-        // TODO statically init or once-init
         if (!decoder[0]) {
             int i;
             for (i = (sizeof alphabet) - 1; i >= 0 ; i--)
@@ -314,7 +316,11 @@ handle_final(SV *expat)
         struct state *st = state_for_parser(expat);
         tdelete(st, &statetree, _find_parser);
         RETVAL = st->base.val;
-        // TODO need to free more stuff inside
+        while (st->stack) {
+            struct stack *temp = st->stack;
+            st->stack = st->stack->next;
+            Safefree(temp);
+        }
         Safefree(st);
     OUTPUT:
         RETVAL
