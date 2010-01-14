@@ -89,6 +89,45 @@ static const char *NUMERICAL_types[] = { NUMERICAL_TYPES };
 static const char *  COMPLEX_types[] = { COMPLEX_TYPES   };
 #undef _R
 
+enum hash_value {
+#define _R(Hash,Key) HASH_FOR_##Key = Hash,
+
+_R(  0, real    )
+_R(  3, key     )
+_R(  4, dict    )
+_R(  5, true    )
+_R(  9, date    )
+_R( 10, integer )
+_R( 14, data    )
+_R( 15, string  )
+_R( 19, false   )
+_R( 20, array   )
+_R( 25, plist   )
+
+#undef _R
+};
+
+static inline unsigned int hash(register const char *str)
+{
+    static const unsigned char asso_values[] = {
+         0, 26, 26, 26, 26, 26, 26, 26, 26, 26,
+        26, 26, 26, 26, 26, 26, 26, 26, 26, 26,
+        26, 26, 26, 26, 26, 26, 26, 26, 26, 26,
+        26, 26, 26, 26, 26, 26, 26, 26, 26, 26,
+        26, 26, 26, 26, 26, 26, 26, 26, 26, 26,
+        26, 26, 26, 26, 26, 26, 26, 26, 26, 26,
+        26, 26, 26, 26, 26, 26, 26, 26, 26, 26,
+        26, 26, 26, 26, 26, 26, 26, 26, 26, 26,
+        26, 26, 26, 26, 26, 26, 26, 26, 26, 26,
+        26, 26, 26, 26, 26, 26, 26, 10, 26, 26,
+         4,  5,  9, 26, 26,  5, 26,  3,  0, 26,
+        26, 26, 15, 26,  0, 10,  0, 26, 26, 26,
+        26, 26, 26, 26, 26, 26, 26, 26
+    };
+
+    return asso_values[(unsigned char)str[3]] + asso_values[(unsigned char)str[0]];
+}
+
 static int _find_parser(const void *a, const void *b)
 {
     assert(a != NULL);
@@ -113,40 +152,54 @@ static struct state* state_for_parser(SV *parser)
     return *result;
 }
 
-static int _str_cmp(const void *a, const void *b)
-{
-    return *(char**)b ? strcmp(a, *(char **)b) : -1;
-}
-
 static enum ctx context_for_name(const char *name)
 {
-    size_t count = countof(ALL_types);
-    // TODO use gperf or some fast hash function to look up context
-    const char **which = lfind(name, ALL_types, &count, sizeof ALL_types[0], _str_cmp);
-    if (which == NULL || which < ALL_types || which - ALL_types >= countof(ALL_types))
-        croak("Could not find context '%s'", name);
-
     static const enum ctx lookup[] = {
-        [T_dict ] = S_DICT,
-        [T_array] = S_ARRAY,
+        [HASH_FOR_dict ] = S_DICT,
+        [HASH_FOR_array] = S_ARRAY,
     };
 
-    return lookup[which - ALL_types];
+    return lookup[hash(name)];
 }
 
-#define _R(X) \
-    static int is_##X##_type(const char *name) \
-    { \
-        size_t count = countof(X##_types); \
-        return lfind(name, X##_types, &count, sizeof X##_types[0], _str_cmp) != NULL; \
-    }
-
-_R(ALL)
-_R(SIMPLE)
-_R(NUMERICAL)
-_R(COMPLEX)
-
+static inline int is_ALL_type(const char *name)
+{
+    register int o = hash(name);
+    switch (o) {
+#define _R(X) case HASH_FOR_##X:
+        ALL_TYPES
 #undef _R
+            return 1;
+        default:
+            return 0;
+    }
+}
+
+static inline int is_COMPLEX_type(const char *name)
+{
+    register int o = hash(name);
+    switch (o) {
+#define _R(X) case HASH_FOR_##X:
+        COMPLEX_TYPES
+#undef _R
+            return 1;
+        default:
+            return 0;
+    }
+}
+
+static inline int is_SIMPLE_type(const char *name)
+{
+    register int o = hash(name);
+    switch (o) {
+#define _R(X) case HASH_FOR_##X:
+        SIMPLE_TYPES
+#undef _R
+            return 1;
+        default:
+            return 0;
+    }
+}
 
 MODULE = Mac::PropertyList::XS		PACKAGE = Mac::PropertyList::XS		
 
@@ -157,9 +210,9 @@ handle_start(SV *expat, SV *element, ...)
     CODE:
         struct state *st = state_for_parser(expat);
         const char *name = SvPVX(element);
-        if (st->base.context == S_EMPTY && strcmp(name, "plist") == 0) {
+        if (st->base.context == S_EMPTY && hash(name) == HASH_FOR_plist) {
             st->base.context = S_TOP;
-        } else if (st->base.context == S_TOP || strcmp(name, "key") == 0 || is_ALL_type(name)) {
+        } else if (st->base.context == S_TOP || hash(name) == HASH_FOR_key || is_ALL_type(name)) {
             struct stack *old = st->stack;
             Newxz(st->stack, 1, struct stack);
             st->stack->node = st->base;
@@ -183,7 +236,7 @@ handle_start(SV *expat, SV *element, ...)
                 st->base.key = NULL;
             } else if (is_SIMPLE_type(name)) {
                 st->base.context = S_TEXT;
-            } else if (strcmp(name, "key") == 0) {
+            } else if (hash(name) == HASH_FOR_key) {
                 if (st->base.context == S_DICT) {
                     st->base.context = S_KEY;
                 } else {
@@ -201,7 +254,7 @@ handle_end(SV *expat, SV *element)
     CODE:
         struct state *st = state_for_parser(expat);
         const char *name = SvPVX(element);
-        if (strcmp(name, "plist")) { // discard plist element
+        if (hash(name) != HASH_FOR_plist) { // discard plist element
             struct node *elt = &st->stack->node;
             struct stack *temp = st->stack;
             st->stack = st->stack->next;
@@ -216,7 +269,7 @@ handle_end(SV *expat, SV *element)
                 PUSHMARK(SP);
                 XPUSHs(sv_2mortal(newSVpv(pv, 0)));
                 if (st->accum) {
-                    if (strcmp(name, "data") == 0) {
+                    if (hash(name) == HASH_FOR_data) {
                         // base64 decode
                         // from http://ftp.riken.jp/net/mail/vm/base64-decode.c
                         int i, j = 0, char_count = 0, bits = 0, total = 0;
@@ -259,7 +312,7 @@ handle_end(SV *expat, SV *element)
 
                 //SvREFCNT_dec(st->accum);
                 st->accum = NULL;
-            } else if (strcmp(name, "key") == 0) {
+            } else if (hash(name) == HASH_FOR_key) {
                 SvREFCNT_dec(st->base.key);
                 st->base.key = st->accum;
                 st->accum = NULL;
