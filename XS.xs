@@ -13,7 +13,60 @@
 static unsigned char alphabet[64] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 static char decoder[256];
 
-enum ctx { S_EMPTY, S_TOP, S_FREE, S_DICT, S_ARRAY, S_KEY, S_TEXT };
+#define COMPLEX_TYPES \
+    _R(dict) \
+    _R(array)
+
+#define NUMERICAL_TYPES \
+    _R(real) \
+    _R(integer) \
+    _R(true) \
+    _R(false)
+
+#define SIMPLE_TYPES \
+    _R(data) \
+    _R(date) \
+    _R(string) \
+    NUMERICAL_TYPES
+
+#define ALL_TYPES \
+    COMPLEX_TYPES \
+    SIMPLE_TYPES
+
+enum type {
+#define _R(X) T_##X,
+    ALL_TYPES
+#undef _R
+    T_max
+};
+
+enum hash_value {
+#define _R(Hash,Key) HASH_FOR_##Key = Hash,
+
+_R(  0, real    )
+_R(  3, key     )
+_R(  4, dict    )
+_R(  5, true    )
+_R(  9, date    )
+_R( 10, integer )
+_R( 14, data    )
+_R( 15, string  )
+_R( 19, false   )
+_R( 20, array   )
+_R( 25, plist   )
+
+#undef _R
+};
+
+enum ctx {
+    S_EMPTY,
+    S_TOP,
+    S_FREE,
+    S_DICT  = HASH_FOR_dict,
+    S_ARRAY = HASH_FOR_array,
+    S_KEY,
+    S_TEXT
+};
 
 static const char *context_names[] = {
 #define _R(X) [S_##X] = #X
@@ -55,58 +108,6 @@ void *statetree;
 // long enough to cover any type name
 #define TYPE_FILLER    "XXXXXXXX"
 
-#define COMPLEX_TYPES \
-    _R(dict) \
-    _R(array)
-
-#define NUMERICAL_TYPES \
-    _R(real) \
-    _R(integer) \
-    _R(true) \
-    _R(false)
-
-#define SIMPLE_TYPES \
-    _R(data) \
-    _R(date) \
-    _R(string) \
-    NUMERICAL_TYPES
-
-#define ALL_TYPES \
-    COMPLEX_TYPES \
-    SIMPLE_TYPES
-
-enum type {
-#define _R(X) T_##X,
-    ALL_TYPES
-#undef _R
-    T_max
-};
-
-#define _R(X) [T_##X] = #X,
-static const char *      ALL_types[] = { ALL_TYPES       };
-static const char *   SIMPLE_types[] = { SIMPLE_TYPES    };
-static const char *NUMERICAL_types[] = { NUMERICAL_TYPES };
-static const char *  COMPLEX_types[] = { COMPLEX_TYPES   };
-#undef _R
-
-enum hash_value {
-#define _R(Hash,Key) HASH_FOR_##Key = Hash,
-
-_R(  0, real    )
-_R(  3, key     )
-_R(  4, dict    )
-_R(  5, true    )
-_R(  9, date    )
-_R( 10, integer )
-_R( 14, data    )
-_R( 15, string  )
-_R( 19, false   )
-_R( 20, array   )
-_R( 25, plist   )
-
-#undef _R
-};
-
 static inline unsigned int hash(register const char *str)
 {
     static const unsigned char asso_values[] = {
@@ -139,8 +140,7 @@ static int _find_parser(const void *a, const void *b)
     assert(x->parser != NULL);
     assert(y->parser != NULL);
 
-    return PTR2IV(SvRV(x->parser)) -
-           PTR2IV(SvRV(y->parser));
+    return SvRV(x->parser) - SvRV(y->parser);
 }
 
 static struct state* state_for_parser(SV *parser)
@@ -152,54 +152,17 @@ static struct state* state_for_parser(SV *parser)
     return *result;
 }
 
-static enum ctx context_for_name(const char *name)
-{
-    static const enum ctx lookup[] = {
-        [HASH_FOR_dict ] = S_DICT,
-        [HASH_FOR_array] = S_ARRAY,
-    };
-
-    return lookup[hash(name)];
-}
-
-static inline int is_ALL_type(const char *name)
-{
-    register int o = hash(name);
-    switch (o) {
 #define _R(X) case HASH_FOR_##X:
-        ALL_TYPES
-#undef _R
-            return 1;
-        default:
-            return 0;
-    }
-}
+#define _S(T) \
+    static inline int is_##T##_type(const char *name) \
+    { switch (hash(name)) T##_TYPES return 1; return 0; }
 
-static inline int is_COMPLEX_type(const char *name)
-{
-    register int o = hash(name);
-    switch (o) {
-#define _R(X) case HASH_FOR_##X:
-        COMPLEX_TYPES
-#undef _R
-            return 1;
-        default:
-            return 0;
-    }
-}
+_S(ALL)
+_S(COMPLEX)
+_S(SIMPLE)
 
-static inline int is_SIMPLE_type(const char *name)
-{
-    register int o = hash(name);
-    switch (o) {
-#define _R(X) case HASH_FOR_##X:
-        SIMPLE_TYPES
+#undef _S
 #undef _R
-            return 1;
-        default:
-            return 0;
-    }
-}
 
 MODULE = Mac::PropertyList::XS		PACKAGE = Mac::PropertyList::XS		
 
@@ -231,8 +194,8 @@ handle_start(SV *expat, SV *element, ...)
 
                 st->base.val = POPs;
                 SvREFCNT_inc(st->base.val);
-                st->base.context = context_for_name(name);
-                //SvREFCNT_dec(st->base.key);
+                // enum values are selected to overlap so no lookup is needed
+                st->base.context = hash(name);
                 st->base.key = NULL;
             } else if (is_SIMPLE_type(name)) {
                 st->base.context = S_TEXT;
@@ -310,7 +273,6 @@ handle_end(SV *expat, SV *element)
                 val = POPs;
                 SvREFCNT_inc(val);
 
-                //SvREFCNT_dec(st->accum);
                 st->accum = NULL;
             } else if (hash(name) == HASH_FOR_key) {
                 SvREFCNT_dec(st->base.key);
@@ -353,7 +315,7 @@ handle_init(SV *expat)
         struct state *st;
         Newxz(st, 1, struct state);
         st->parser = expat;
-        // this is fragile : what if the expat object moves ?
+        // this is fragile : what if the expat object moves ? can it ?
         tsearch(st, &statetree, _find_parser);
 
         if (!decoder[0]) {
