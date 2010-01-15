@@ -23,7 +23,7 @@ L<Mac::PropertyList>.
 
 =cut
 
-use 5.010000;
+use 5.008008;
 use strict;
 use warnings;
 use Carp;

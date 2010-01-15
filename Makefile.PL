@@ -12,6 +12,7 @@ requires        'Encode'                    => 0;
 requires        'HTML::Entities'            => 0;
 requires        'HTML::Entities::Numbered'  => 0.04;
 requires        'Mac::PropertyList'         => 1.29;
+requires        'Mac::PropertyList::SAX'    => 0.84;
 requires        'Object::MultiType'         => 0.02;
 requires        'XML::Parser'               => 0;
 build_requires  'Test::More'                => 0.42;
