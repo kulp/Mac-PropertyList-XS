@@ -5,8 +5,6 @@ XS.bs
 XS.c
 XS.o
 blib/
-const-c.inc
-const-xs.inc
 pm_to_blib
 META.yml
 *.bak
