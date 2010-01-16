@@ -5,7 +5,7 @@ use warnings;
 
 use Digest::MD5 qw(md5_hex);
 
-use Test::More 'no_plan';
+use Test::More tests => 7;
 
 my $Class = 'Mac::PropertyList::XS';
 my $suborned = 'Mac::PropertyList::SAX';
