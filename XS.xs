@@ -1,4 +1,5 @@
 #include <assert.h>
+#include <ctype.h>
 #include <search.h>
 
 #include "EXTERN.h"
@@ -152,6 +153,46 @@ static struct state* state_for_parser(SV *parser)
     return *result;
 }
 
+// base64 decode
+// from http://ftp.riken.jp/net/mail/vm/base64-decode.c
+static int base64_decode(size_t ilen, const char in[ilen], size_t olen, char out[olen])
+{
+    int i = 0, j = 0, char_count = 0, bits = 0;
+
+    for (i = 0; in[i]; i++) {
+        unsigned char c = in[i];
+        if (c == '=') break;
+        if (isspace(c)) continue;
+        // maybe handle bogus data better ?
+        bits += decoder[c];
+        char_count++;
+        if (char_count == 4) {
+            out[j++] = bits >> 16;
+            out[j++] = (bits >> 8) & 0xff;
+            out[j++] = bits & 0xff;
+            bits = 0;
+            char_count = 0;
+        } else {
+            bits <<= 6;
+        }
+    }
+
+    if (in[i]) { /* c == '=' */
+        switch (char_count) {
+          case 1: return -1;
+          case 2:
+            out[j++] = bits >> 10;
+            break;
+          case 3:
+            out[j++] = bits >> 16;
+            out[j++] = (bits >> 8) & 0xff;
+            break;
+        }
+    }
+
+    return j;
+}
+
 #define _R(X) case HASH_FOR_##X:
 #define _S(T) \
     static inline int is_##T##_type(const char *name) \
@@ -233,29 +274,10 @@ handle_end(SV *expat, SV *element)
                 XPUSHs(sv_2mortal(newSVpv(pv, 0)));
                 if (st->accum) {
                     if (hash(name) == HASH_FOR_data) {
-                        // base64 decode
-                        // from http://ftp.riken.jp/net/mail/vm/base64-decode.c
-                        int i, j = 0, char_count = 0, bits = 0, total = 0;
                         size_t len;
                         const char *what = SvPV(st->accum, len);
                         char out[len];
-                        for (i = 0; what[i] != 0; i++) {
-                            unsigned char c = what[i];
-                            if (c == '=') break;
-                            // maybe handle bogus data better ?
-                            bits += decoder[c];
-                            char_count++;
-                            if (char_count == 4) {
-                                out[j++] = bits >> 16;
-                                out[j++] = (bits >> 8) & 0xff;
-                                out[j++] = bits & 0xff;
-                                bits = 0;
-                                char_count = 0;
-                                total++;
-                            } else {
-                                bits <<= 6;
-                            }
-                        }
+                        int total = base64_decode(len, what, len, out);
 
                         XPUSHs(sv_2mortal(newSVpvn(out, total)));
                     } else {

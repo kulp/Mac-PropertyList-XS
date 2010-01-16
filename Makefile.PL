@@ -15,6 +15,7 @@ requires        'Mac::PropertyList'         => 1.29;
 requires        'Mac::PropertyList::SAX'    => 0.84;
 requires        'Object::MultiType'         => 0.02;
 requires        'XML::Parser'               => 0;
+build_requires  'Digest::MD5'               => 2.00;
 build_requires  'Test::More'                => 0.42;
 build_requires  'LWP'                       => 0;
 
