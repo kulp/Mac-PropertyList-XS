@@ -96,10 +96,7 @@ struct state {
     } *stack;
 };
 
-// TODO support multiple states using a tree indexed by pointer
-//static struct state _st = { .base.context = S_EMPTY };
-//static struct state *st = &_st;
-
+/// root of search tree of states
 void *statetree;
 
 #define countof(X) (sizeof (X) / sizeof (X)[0])
