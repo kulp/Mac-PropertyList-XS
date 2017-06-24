@@ -107,23 +107,52 @@ sub parse_plist_file
     my $file = shift;
 
     if (ref $file) {
-        _parse(parse => $file);
+        _parse(parse_file => $file);
     } else {
         carp("parse_plist_file: file [$file] does not exist!"), return unless -e $file;
         open my $fh, "<", $file;
-        _parse(parse => $fh);
+        _parse(parse_file => $fh);
     }
 }
 
-sub _parse
-{
-    my ($how, $what) = @_;
-    my $p = new XML::Parser(Handlers => { Init  => \&handle_init,
-                                          Start => \&handle_start,
-                                          End   => \&handle_end,
-                                          Char  => \&handle_char,
-                                          Final => \&handle_final });
-    return $p->$how($what);
+sub _parse {
+    # shift off first param in case we use `goto` later (leaving @_ with $data)
+    my $sub = shift;
+    my ($data) = @_;
+
+    my $first;
+    my $fh;
+    my $delegate;
+
+    # read initial bytes of file
+    # if we have a binary plist, delegate to Mac::PropertyList
+    if ($sub eq "parse_uri") {
+        open $fh, "<", $_[0];
+        $sub = "parse_file";
+        $_[0] = $fh;
+        # delegate will be set below
+    }
+
+    if ($sub eq "parse_file") {
+        read $_[0], $first, length "bplist";
+        seek $_[0], 0, 0 or die "Can't seek given filehandle"; # seek back to beginning
+        $delegate = \&Mac::PropertyList::parse_plist_fh;
+    } elsif ($sub eq "parse_string") {
+        $first = $_[0];
+        $delegate = \&Mac::PropertyList::parse_plist;
+    }
+
+    if ($first =~ /^bplist/) {
+        # binary plist -- delegate to non-SAX module
+        goto $delegate;
+    } else {
+        my $p = new XML::Parser(Handlers => { Init  => \&handle_init,
+                                              Start => \&handle_start,
+                                              End   => \&handle_end,
+                                              Char  => \&handle_char,
+                                              Final => \&handle_final });
+        return $p->parse($data);
+    }
 }
 
 =item parse_plist_fh
@@ -132,7 +161,7 @@ See L<Mac::PropertyList/parse_plist_fh>
 
 =cut
 
-sub parse_plist_fh { _parse(parse => @_) }
+sub parse_plist_fh { _parse(parse_file => @_) }
 
 =item parse_plist
 
@@ -140,7 +169,7 @@ See L<Mac::PropertyList/parse_plist>
 
 =cut
 
-sub parse_plist { _parse(parse => @_) }
+sub parse_plist { _parse(parse_string => @_) }
 
 =item parse_plist_string
 
