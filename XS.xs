@@ -1,5 +1,3 @@
-#include <search.h>
-
 #include "EXTERN.h"
 #include "perl.h"
 #include "XSUB.h"
@@ -94,8 +92,8 @@ struct state {
     } *stack;
 };
 
-/// root of search tree of states
-void *statetree;
+/// map from parsers to state structures
+HV *statehash;
 
 /// TODO use our own ::XS namespace
 #define PACKAGE_PREFIX "Mac::PropertyList::SAX"
@@ -121,21 +119,13 @@ static inline unsigned int hash(register const char *str)
     return asso_values[(unsigned char)str[3]] + asso_values[(unsigned char)str[0]];
 }
 
-static int _find_parser(const void *a, const void *b)
+static struct state* state_for_parser(SV *expat)
 {
-    const struct state *x = a;
-    const struct state *y = b;
-
-    return SvRV(x->parser) - SvRV(y->parser);
-}
-
-static struct state* state_for_parser(SV *parser)
-{
-    struct state st = { .parser = parser };
-    struct state **result = tfind(&st, &statetree, _find_parser);
-    if (*result == NULL)
+    HE *p = hv_fetch_ent(statehash, SvRV(expat), false, 0);
+    if (p == NULL)
         croak("Failed to look up state object by parser argument");
-    return *result;
+    struct state *st = INT2PTR(struct state *, SvUV(HeVAL(p)));
+    return st;
 }
 
 // base64 decode
@@ -316,8 +306,7 @@ handle_init(SV *expat)
         struct state *st;
         Newxz(st, 1, struct state);
         st->parser = expat;
-        // this is fragile : what if the expat object moves ? can it ?
-        tsearch(st, &statetree, _find_parser);
+        hv_store_ent(statehash, SvRV(expat), newSVuv(PTR2UV(st)), 0);
 
         if (!decoder[0]) {
             int i;
@@ -330,7 +319,7 @@ SV *
 handle_final(SV *expat)
     CODE:
         struct state *st = state_for_parser(expat);
-        tdelete(st, &statetree, _find_parser);
+        hv_delete_ent(statehash, SvRV(expat), G_DISCARD, 0);
         RETVAL = st->base.val;
         while (st->stack) {
             struct stack *temp = st->stack;
@@ -343,3 +332,5 @@ handle_final(SV *expat)
 
 INCLUDE: const-xs.inc
 
+BOOT:
+	statehash = newHV();
