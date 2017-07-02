@@ -1,4 +1,3 @@
-#include <assert.h>
 #include <ctype.h>
 #include <search.h>
 
@@ -99,8 +98,6 @@ struct state {
 /// root of search tree of states
 void *statetree;
 
-#define countof(X) (sizeof (X) / sizeof (X)[0])
-
 /// TODO use our own ::XS namespace
 #define PACKAGE_PREFIX "Mac::PropertyList::SAX"
 
@@ -127,14 +124,8 @@ static inline unsigned int hash(register const char *str)
 
 static int _find_parser(const void *a, const void *b)
 {
-    assert(a != NULL);
-    assert(b != NULL);
-
     const struct state *x = a;
     const struct state *y = b;
-
-    assert(x->parser != NULL);
-    assert(y->parser != NULL);
 
     return SvRV(x->parser) - SvRV(y->parser);
 }
