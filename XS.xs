@@ -102,9 +102,7 @@ void *statetree;
 #define countof(X) (sizeof (X) / sizeof (X)[0])
 
 /// TODO use our own ::XS namespace
-#define PACKAGE_PREFIX "Mac::PropertyList::SAX::"
-// long enough to cover any type name
-#define TYPE_FILLER    "XXXXXXXX"
+#define PACKAGE_PREFIX "Mac::PropertyList::SAX"
 
 static inline unsigned int hash(register const char *str)
 {
@@ -220,11 +218,8 @@ handle_start(SV *expat, SV *element, ...)
             st->stack->next = old;
 
             if (is_COMPLEX_type(name)) {
-                char temp[] = PACKAGE_PREFIX TYPE_FILLER;
-                strcpy(&temp[sizeof PACKAGE_PREFIX - 1], name);
-
                 PUSHMARK(SP);
-                XPUSHs(sv_2mortal(newSVpv(temp, 0)));
+                XPUSHs(sv_2mortal(newSVpvf("%s::%s", PACKAGE_PREFIX, name)));
                 PUTBACK;
                 int count = call_method("new", G_SCALAR);
                 SPAGAIN;
@@ -264,11 +259,8 @@ handle_end(SV *expat, SV *element)
             st->base = *elt;
 
             if (is_SIMPLE_type(name)) {
-                char pv[] = PACKAGE_PREFIX TYPE_FILLER;
-                strcpy(&pv[sizeof PACKAGE_PREFIX - 1], name);
-
                 PUSHMARK(SP);
-                XPUSHs(sv_2mortal(newSVpv(pv, 0)));
+                XPUSHs(sv_2mortal(newSVpvf("%s::%s", PACKAGE_PREFIX, name)));
                 if (st->accum) {
                     if (hash(name) == HASH_FOR_data) {
                         size_t len;
