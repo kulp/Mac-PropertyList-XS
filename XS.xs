@@ -1,4 +1,3 @@
-#include <ctype.h>
 #include <search.h>
 
 #include "EXTERN.h"
@@ -148,7 +147,7 @@ static int base64_decode(size_t ilen, const char in[ilen], size_t olen, char out
     for (i = 0; in[i]; i++) {
         unsigned char c = in[i];
         if (c == '=') break;
-        if (isspace(c)) continue;
+        if (isSPACE(c)) continue;
         // maybe handle bogus data better ?
         bits += decoder[c];
         char_count++;
