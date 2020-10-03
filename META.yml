@@ -3,32 +3,35 @@ abstract: 'work with Mac plists at a low level, really fast'
 author:
   - 'Darren M. Kulp, C<< <kulp @ cpan.org> >>'
 build_requires:
-  ExtUtils::MakeMaker: 0
+  Digest::MD5: 2
+  ExtUtils::MakeMaker: 6.59
+  LWP: 0
+  Test::More: 0.42
 configure_requires:
-  ExtUtils::MakeMaker: 0
-dynamic_config: 0
-generated_by: 'ExtUtils::MakeMaker version 6.66, CPAN::Meta::Converter version 2.133380'
-license: unknown
+  ExtUtils::MakeMaker: 6.59
+distribution_type: module
+dynamic_config: 1
+generated_by: 'Module::Install version 1.19'
+license: perl
 meta-spec:
   url: http://module-build.sourceforge.net/META-spec-v1.4.html
   version: 1.4
 name: Mac-PropertyList-XS
 no_index:
   directory:
-    - t
     - inc
+    - t
 requires:
-  Digest::MD5: 2
   Encode: 0
-  ExtUtils::MakeMaker: 6.42
   HTML::Entities: 0
   HTML::Entities::Numbered: 0.04
-  LWP: 0
   Mac::PropertyList: 1.29
-  Mac::PropertyList::SAX: 0.84
+  Mac::PropertyList::SAX: 0.9
   Object::MultiType: 0.02
-  Test::More: 0.42
   XML::Parser: 0
   constant: 1.06
   enum: 0
-version: 0.03
+  perl: 5.8.8
+resources:
+  license: http://dev.perl.org/licenses/
+version: '0.03'
