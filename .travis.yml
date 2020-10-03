@@ -1,4 +1,5 @@
 language: perl
+dist: bionic
 arch:
   - amd64
   - arm64
