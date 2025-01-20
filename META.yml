@@ -1,7 +1,7 @@
 ---
 abstract: 'work with Mac plists at a low level, really fast'
 author:
-  - 'Darren M. Kulp, C<< <kulp @ cpan.org> >>'
+  - 'Darren M. Kulp, C<< <darren@kulp.ch> >>'
 build_requires:
   Digest::MD5: 2
   ExtUtils::MakeMaker: 6.59
